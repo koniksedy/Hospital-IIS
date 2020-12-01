@@ -1,7 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿/*
+ * Soubor modelu pro uživatelskou část Admin a správu doktorů
+ * Autor: Ondřej Pavlacký <xpavla15>
+ * Poslední úprava: 1.12.2020
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,9 +13,6 @@ using X.PagedList;
 
 namespace Nemocnice.Models
 {
-    /*
-     * Model uchovává informace o pacientovi.
-     */
     public class DoctorEditModel
     {
         public NameModel DoctorFullName { get; set; }

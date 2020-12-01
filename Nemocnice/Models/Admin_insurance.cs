@@ -1,4 +1,10 @@
-﻿using System;
+﻿/*
+ * Soubor modelu pro uživatelskou část Admin a správu pracovníků pojišťovny
+ * Autor: Kateřina Kunorzová <xkunor00>
+ * Poslední úprava: 1.12.2020
+ */
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;

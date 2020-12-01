@@ -1,4 +1,10 @@
-﻿using System;
+﻿/*
+ * Soubor kontroleru uživatele s rolí admin.
+ * Autor: Ondřej Pavlacký <xpavla15>, Michal Šedý <xsedym02>, Kateřina Kunorzová <xkunor00>
+ * Poslední úprava: 1.12.2020
+ */
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
@@ -19,6 +25,10 @@ using System.Text.RegularExpressions;
 namespace Nemocnice.Controllers
 {
 
+     /*
+     * Třída, která zpracuje požadavky uživatele s rolí admin,
+     * k jednotlivým akcím může přistoupit jen uživatel s těmito rolemi.
+     */
     [Authorize(Roles = "Admin")]
 
     public class Admin : Controller
@@ -45,9 +55,12 @@ namespace Nemocnice.Controllers
 
 
         /*
-         * Akce karotéky. Vypíše všechny pacienty uložené v databázi.
+         * Akce kartotéky. Vypíše všechny pacienty uložené v databázi.
          * sortOrder - typ řazení (podle jnéma, příjmení, rodného čísla)
          * searchString - hledaný řetězec (v případě vyhledávání)
+         * ID_delete - ID pacienta, který se z tabulky vymaže
+         * model - model pro uložení vybraných dat
+         * p - proměnná pro stránkování
          */
         public async Task<IActionResult> Card(string sortOrder, string searchString, string ID_delete, Admin_patient model, int ? p)
         {
@@ -57,9 +70,7 @@ namespace Nemocnice.Controllers
             ViewData["CurrentSort"] = sortOrder;
             ViewData["CurrentPage"] = p;
 
-
-
-            //pokud je ID_delete různé od 0, víme, jakého pacienta chceme odstranit
+            //pokud je ID_delete různé od 0, víme, jakého pacienta chceme odstranit, je potřeba odstranit všechny jeho vazby 
             if (ID_delete != null)
             {
                 var PatientId = db.PatientT.Where(s => s.SocialSecurityNum == ID_delete).Select(s => s.PatientID).FirstOrDefault();
@@ -158,7 +169,7 @@ namespace Nemocnice.Controllers
             {
                 // Je potřeba vyhledat konkrétní pacienty odpovídající hledanému výrazu.
                 // Hledání probíhá skrz položky (Jméno, Příjmení, R.Č.).
-                // Rodné číslo je převáděno na string. Hledání probíhá na základě metody StartsWith.
+                // Rodné číslo je převáděno na string. Hledání probíhá na základě metody Contains.
                 Patients = db.PatientT.Join(db.UserT,
                                 patient => patient.UserId,
                                 user => user.UserId,
@@ -223,14 +234,13 @@ namespace Nemocnice.Controllers
             // houseNum může být nezadáno, nejde převést prázdnou hodnotu na int, proto kontroluji.
             int houseNum = int.Parse(String.IsNullOrEmpty(Request.Form["NewHouseNum"].ToString()) ? "0" : Request.Form["NewHouseNum"].ToString());
             string city = Request.Form["NewCity"];
-            int zip = int.Parse(Request.Form["NewZip"].ToString().Replace(" ", ""));    // Může být ve tvaru "739 11"
+            int zip = int.Parse(Request.Form["NewZip"].ToString().Replace(" ", ""));   
 
             // Deklarace proměnných pro budoucí vložení do databáze
             Address address;
             User user;
 
             // Kontrola, zda pacient již existuje, pokud ano, nic neděláme.
-            // TODO - vypsat upozornění
             if (db.PatientT.Where(o => o.SocialSecurityNum == socialNum).ToList().Count != 0)
             {
                 return RedirectToAction("Card");
@@ -300,11 +310,13 @@ namespace Nemocnice.Controllers
             return RedirectToAction("Card", new { SortOrder = Request.Form["SortOrder"], p = Request.Form["p"], Search = Request.Form["Search"] });
         }
 
-
+        /*
+        * Akce upraví pacienta v databázi.
+        */
         [HttpPost]
         public async Task<IActionResult> EditDb_PatientAsync()
         {
-
+            //získaní dat z formuláře
             string edit_oldRC = Request.Form["edit_ID"];
             string edit_name = Request.Form["edit_name"];
             string edit_surname = Request.Form["edit_surname"];
@@ -333,54 +345,37 @@ namespace Nemocnice.Controllers
                 {
                     fotka.SocialSecurityNum = edit_rc;
                 }
-                // Změna u health condition
+                // Změna rodného čísla u health condition
                 Patient.HealthCondition.SocialSecurityNum = edit_rc;
                 db.SaveChanges();
             }
 
+            //pokud pacient nemá žádnou adresu, vytvoříme ji
             if (Patient.HomeAddress == null)
             {
                 Patient.HomeAddress = new Address { };
                 db.SaveChanges();
             }
 
-
-            
-            // Aktualizace adresy
+            //Aktualizace adresy
             Patient.HomeAddress.City = edit_town;
             Patient.HomeAddress.ZIP = edit_psc;
             Patient.HomeAddress.StreetName = edit_street;
             Patient.HomeAddress.HouseNumber = edit_cp;
             db.SaveChanges();
 
-            /*
-            int pom2 = Convert.ToInt32(PatientUser.WorkAddress.AddressId);
-            var pom3 = db.AddressT.First(a => a.AddressId == pom2);
 
-            if (Request.Form["edit_cp"] == "")
-            {
-                    
-                pom3.HouseNumber = edit_cp;
-            }
-            pom3.StreetName = edit_street;
-                
-            pom3.City = edit_town;
-            pom3.ZIP = edit_psc;
-            */
-
-
-            // Změna jnéna atd...
+            // Změna jména, příjmení, titulu, telefonu, emailu, loginu a pojišťovny
             PatientUser.Name = edit_name;
             PatientUser.Surname = edit_surname;
             PatientUser.Title = edit_title;
             PatientUser.Phone = edit_tel;
             PatientUser.Email = edit_mail;
             PatientUser.Login = edit_rc;
-
             Patient.InsuranceCompany = edit_insurance;
 
+            //změna hesla
             /****************************/
-
             if (!String.IsNullOrEmpty(edit_password))
             {
                 var userChangeLogin = await _userManager.FindByNameAsync(edit_oldRC);
@@ -390,7 +385,6 @@ namespace Nemocnice.Controllers
                 await _userManager.ResetPasswordAsync(userChangeLogin, token, edit_password);
                 await _userManager.UpdateAsync(userChangeLogin);
             }
-
             /****************************/
 
             // Změna rodného čísla - loginu
@@ -409,11 +403,14 @@ namespace Nemocnice.Controllers
             return RedirectToAction("Card", new { SortOrder = Request.Form["SortOrder"], p = Request.Form["p"], Search = Request.Form["Search"] });
         }
 
-        
 
+         /*
+         * Akce upraví pracovníka pojišťovny v databázi.
+         */
         [HttpPost]
         public async Task<IActionResult> EditDb_InsuranceAsync()
         { 
+            //vytažení dat z formuláže úprav
             int edit_ID = int.Parse(Request.Form["edit_ID"]);
             string edit_name = Request.Form["edit_name"];
             string edit_surname = Request.Form["edit_surname"];
@@ -439,24 +436,26 @@ namespace Nemocnice.Controllers
             User.Phone = edit_tel;
             User.Email = edit_mail;
 
+            //Změna InsuranceEmp
             InsuranceEmp.Possition = edit_position;
             InsuranceEmp.WorkPhone = edit_work_phone;
 
+            //pokud pracovník nemá adresu do zaměstnání, vytvoříme ji
             if (User.WorkAddress == null)
             {
                 User.WorkAddress = new Address { };
                 db.SaveChanges();
             }
 
+            //změna adresy
             User.WorkAddress.StreetName = edit_street;
             User.WorkAddress.HouseNumber = edit_cp;
             User.WorkAddress.City = edit_town;
             User.WorkAddress.ZIP = edit_psc;
             db.SaveChanges();
 
-
+            //změna hesla
             /****************************/
-
             if (!String.IsNullOrEmpty(edit_password))
             {
                 var userChangeLogin = await _userManager.FindByNameAsync(User.Login);
@@ -466,12 +465,19 @@ namespace Nemocnice.Controllers
                 await _userManager.ResetPasswordAsync(userChangeLogin, token, edit_password);
                 await _userManager.UpdateAsync(userChangeLogin);
             }
-
             /****************************/
 
             return RedirectToAction("CardInsurance", new { SortOrder = Request.Form["SortOrder"], p = Request.Form["p"], Search = Request.Form["Search"] });
         }
-    
+
+         /*
+         * Akce kartotéky pracivníků pojišťovny. Vypíše všechny pracovníky uložené v databázi.
+         * sortOrder - typ řazení 
+         * searchString - hledaný řetězec (v případě vyhledávání)
+         * ID_delete - ID pracovníka, který se z tabulky vymaže
+         * model - model pro uložení vybraných dat
+         * p - proměnná pro stránkování
+         */
         public async Task<IActionResult> CardInsurance(string sortOrder, string searchString, int ID_delete, Admin_insurance model, int? p)
         {
             // Uložení přávě vyhledávaného řetězce.
@@ -481,8 +487,7 @@ namespace Nemocnice.Controllers
             ViewData["CurrentPage"] = p;
 
 
-
-            //pokud je ID_delete různé od 0, víme, jakého pacienta chceme odstranit
+            //pokud je ID_delete různé od 0, víme, jakého pracovníka chceme odstranit
             if (ID_delete != 0)
             {
                 var ID = db.InsureEmpT.Where(s => s.PersonalId == ID_delete).Select(s => s.UserId).FirstOrDefault();
@@ -498,14 +503,14 @@ namespace Nemocnice.Controllers
                 db.SaveChanges();
             }
 
-            // Model - Seznam všech pacientů v databázi
+            // Model - Seznam všech pracovníků v databázi
             List<Admin_insurance> Insurance;
 
-            // Získání údajů ke každému pacientovi (Příjmení, Jméno, Titul, R.Č., pojišťovny).
-            // Informace jsou získávány ze spojení dvou tabulek: PatientT (R.Č., pojišťovna) a UserT (Příjmení, Jméno, Titul).
+            // Získání údajů ke každému pracovníkovi
+            // Informace jsou získávány ze spojení dvou tabulek: InsuranceEmpT a UserT
             if (String.IsNullOrEmpty(searchString))
             {
-                // Není použito vyhledávání (chceme všechny pacienty)
+                // Není použito vyhledávání (chceme všechny pracovníky)
                 Insurance = db.InsureEmpT.Join(db.UserT,
                                 insurance => insurance.UserId,
                                 user => user.UserId,
@@ -527,9 +532,8 @@ namespace Nemocnice.Controllers
             }
             else
             {
-                // Je potřeba vyhledat konkrétní pacienty odpovídající hledanému výrazu.
-                // Hledání probíhá skrz položky (Jméno, Příjmení, R.Č.).
-                // Rodné číslo je převáděno na string. Hledání probíhá na základě metody StartsWith.
+                // Je potřeba vyhledat konkrétní pracovníky odpovídající hledanému výrazu.
+                // Hledání probíhá skrz položky (Jméno, Příjmení).
                 Insurance = db.InsureEmpT.Join(db.UserT,
                                 insurance => insurance.UserId,
                                 user => user.UserId,
@@ -572,13 +576,12 @@ namespace Nemocnice.Controllers
         }
 
         /*
-         * Akce vytvoří nového pacienta v databázi.
-         * Zahrnuje vytvoření Adresy, Uživatele, Pacienta, Uživatele pro Identity FW a přidělení práv.
+         * Akce vytvoří nového pracovníka v databázi.
          */
         [HttpPost]
         public async Task<IActionResult> CreateInsuranceAsync()
         {
-            // Hodnoty pro nového pacienta získané přes POST
+            // Hodnoty pro nového pracovníka získané přes POST
             string name = Request.Form["NewName"];
             string surname = Request.Form["NewSurname"];
             string login = Request.Form["NewLogin"];
@@ -586,10 +589,11 @@ namespace Nemocnice.Controllers
             string tel = Request.Form["NewTel"];
             string email = Request.Form["NewEmail"];
             string street = Request.Form["NewStreet"];
+
             // houseNum může být nezadáno, nejde převést prázdnou hodnotu na int, proto kontroluji.
             int houseNum = int.Parse(String.IsNullOrEmpty(Request.Form["NewHouseNum"].ToString()) ? "0" : Request.Form["NewHouseNum"].ToString());
             string city = Request.Form["NewCity"];
-            int zip = int.Parse(Request.Form["NewZip"].ToString().Replace(" ", ""));    // Může být ve tvaru "739 11"
+            int zip = int.Parse(Request.Form["NewZip"].ToString().Replace(" ", ""));    
             string position = Request.Form["NewPosition"];
             string workphone = Request.Form["NewWorkPhone"];
 
@@ -598,7 +602,7 @@ namespace Nemocnice.Controllers
             User user;
 
 
-            // Vytváření jednotlivých tabulek pro nového pacienta
+            // Vytváření jednotlivých tabulek pro nového pracovníka
             // Po každé vložené tabulce pro jistotu provedu SaveChanges,
             // protože se hned v zápětí na tuto tabulku dotazuji. (Změny se musí uložit.)
             // Vytvoření adresy
@@ -624,6 +628,7 @@ namespace Nemocnice.Controllers
             db.AddressT.Add(address);
             db.SaveChanges();
 
+            //vytvoření loginu 
             string loginsurname = "";
             if (surname.Length > 7)
             {
@@ -681,8 +686,8 @@ namespace Nemocnice.Controllers
                 loginCreator = "x" + surname + String.Format("{0:D2}", suffix);
             }
 
-            // Vytvoření uživatele (Jméno, Příjmení, Titul, ...)
-            // Uživatelským jménem pacientů je jejich rodné číslo.
+            // Vytvoření uživatele (Jméno, Příjmení, Titul,Telefon, Email, Pracovní adresa, Login)
+            // Uživatelským jménem pracovníků je jejich login.
             user = new User
             {
                 Login = loginCreator,
@@ -714,17 +719,24 @@ namespace Nemocnice.Controllers
 
             // Vytvoření nového uživatele pro Identity Framework.
             // Základní heslo je 1234567890, uživatelské jméno je shodné s rodným číslem.
-            // Udělení oprávnění Patient.
+            // Udělení oprávnění Insurance.
             var userIdentity = new NemocniceUser { UserName = user.Login };
             var result = await _userManager.CreateAsync(userIdentity, "1234567890");
             await _userManager.AddToRoleAsync(userIdentity, "Insurance");
 
-            // Návrat zpět do kartotéky.
+            // Návrat zpět do kartotéky pracovníků.
             return RedirectToAction("CardInsurance", new { SortOrder = Request.Form["SortOrder"], p = Request.Form["p"], Search = Request.Form["Search"] });
         }
 
 
-
+         /*
+         * Akce kartotéky lékařů. Vypíše všechny lékaře uložené v databázi.
+         * sortOrder - typ řazení
+         * searchString - hledaný řetězec (v případě vyhledávání)
+         * ID_delete - ID lékaře, který se z tabulky vymaže
+         * model - model pro uložení vybraných dat
+         * p - proměnná pro stránkování
+         */
         public async Task<IActionResult> DoctorEditAsync(string sortOrder, string searchString, string ID_delete, DoctorEditModel model, int? p)
         {
             // Uložení přávě vyhledávaného řetězce.
@@ -748,14 +760,15 @@ namespace Nemocnice.Controllers
 
             }
 
-            // Model - Seznam všech pacientů v databázi
+            // Model - Seznam všech doktorů v databázi
             List<DoctorJoined1> Doctors;
 
-            // Získání údajů ke každému pacientovi (Příjmení, Jméno, Titul, R.Č., pojišťovny).
-            // Informace jsou získávány ze spojení dvou tabulek: PatientT (R.Č., pojišťovna) a UserT (Příjmení, Jméno, Titul).
+            // Získání údajů ke každému doktorovi
+            // Informace jsou získávány ze spojení dvou tabulek: DoctorT a UserT
+
             if (String.IsNullOrEmpty(searchString))
             {
-                // Není použito vyhledávání (chceme všechny pacienty)
+                // Není použito vyhledávání (chceme všechny doktory)
                 Doctors = db.UserT.Include(x => x.WorkAddress).Join(db.DoctorT, user => user.UserId, doctor => doctor.UserId,
                             (user, doctor) => new DoctorJoined1
                             {
@@ -765,9 +778,7 @@ namespace Nemocnice.Controllers
             }
             else
             {
-                // Je potřeba vyhledat konkrétní pacienty odpovídající hledanému výrazu.
-                // Hledání probíhá skrz položky (Jméno, Příjmení, R.Č.).
-                // Rodné číslo je převáděno na string. Hledání probíhá na základě metody StartsWith.
+                // Je potřeba vyhledat konkrétní doktory odpovídající hledanému výrazu.
                 try
                 {
                     Doctors = db.UserT.Include(x => x.WorkAddress).Join(db.DoctorT, user => user.UserId, doctor => doctor.UserId,
@@ -815,10 +826,13 @@ namespace Nemocnice.Controllers
             return View(model);
         }
 
+        /*
+         * Akce vytvoří nového lékaře.
+         */
         [HttpPost]
         public async Task<IActionResult> CreateDoctor()
         {
-            // Hodnoty pro nového pacienta získané přes POST
+            // Hodnoty pro nového lékaře získané přes POST
             string name = Request.Form["NewName"];
             string surname = Request.Form["NewSurname"];
             string title = Request.Form["NewTitle"];
@@ -829,20 +843,19 @@ namespace Nemocnice.Controllers
             // houseNum může být nezadáno, nejde převést prázdnou hodnotu na int, proto kontroluji.
             int houseNum = int.Parse(String.IsNullOrEmpty(Request.Form["NewHouseNum"].ToString()) ? "0" : Request.Form["NewHouseNum"].ToString());
             string city = Request.Form["NewCity"];
-            int zip = int.Parse(Request.Form["NewZip"].ToString().Replace(" ", ""));    // Může být ve tvaru "739 11"
+            int zip = int.Parse(Request.Form["NewZip"].ToString().Replace(" ", ""));    
 
             // Deklarace proměnných pro budoucí vložení do databáze
             Address address;
             User user;
 
-            // Kontrola, zda pacient již existuje, pokud ano, nic neděláme.
-            // TODO - vypsat upozornění
+            // Kontrola, zda doktor již existuje, pokud ano, nic neděláme.
             if (db.DoctorT.Where(o => o.ICZ == socialICZ).ToList().Count != 0)
             {
                 return RedirectToAction("DoctorEdit");
             }
 
-            // Vytváření jednotlivých tabulek pro nového pacienta
+            // Vytváření jednotlivých tabulek pro nového doktora
             // Po každé vložené tabulce pro jistotu provedu SaveChanges,
             // protože se hned v zápětí na tuto tabulku dotazuji. (Změny se musí uložit.)
             // Vytvoření adresy
@@ -868,6 +881,7 @@ namespace Nemocnice.Controllers
             db.AddressT.Add(address);
             db.SaveChanges();
 
+            //tvorba loginu
             string loginsurname = "";
             if(surname.Length > 7)
                 loginsurname = surname.Substring(0, 7);
@@ -925,8 +939,8 @@ namespace Nemocnice.Controllers
 
 
 
-            // Vytvoření uživatele (Jméno, Příjmení, Titul, ...)
-            // Uživatelským jménem pacientů je jejich rodné číslo.
+            // Vytvoření uživatele (Jméno, Příjmení, Titul, Login, Telefon, Email, Pracovní adresa)
+            // Uživatelským jménem pacientů je jejich login.
             user = new User
             {
                 Login = loginCreator,
@@ -946,8 +960,7 @@ namespace Nemocnice.Controllers
             db.UserT.Add(user);
             db.SaveChanges();
 
-            // Vytvoření pacienta.
-            // Napojení Address a User
+            // Vytvoření lékaře.
             db.DoctorT.Add(new Data.Doctor
             {
                 UserId = db.UserT.Where(o => o.Login == user.Login).Select(s => s.UserId).ToList().First(),
@@ -958,18 +971,23 @@ namespace Nemocnice.Controllers
 
             // Vytvoření nového uživatele pro Identity Framework.
             // Základní heslo je 1234567890, uživatelské jméno je shodné s rodným číslem.
-            // Udělení oprávnění Patient.
+            // Udělení oprávnění Doctor.
             var userIdentity = new NemocniceUser { UserName = user.Login };
             var result = await _userManager.CreateAsync(userIdentity, "1234567890");
             await _userManager.AddToRoleAsync(userIdentity, "Doctor");
             db.SaveChanges();
+
             // Návrat zpět do kartotéky.
             return RedirectToAction("DoctorEdit", new { SortOrder = Request.Form["SortOrder"], p = Request.Form["p"], Search = Request.Form["Search"] });
         }
 
+        /*
+         * Akce´, která upraví daného lékaře.
+         */
         [HttpPost]
         public async Task<IActionResult> EditDb_DoctorAsync()
         {
+            //data získaná z formuláře
             string login = Request.Form["edit_ID"];
             string edit_name = Request.Form["edit_name"];
             string edit_surname = Request.Form["edit_surname"];
@@ -988,31 +1006,31 @@ namespace Nemocnice.Controllers
             var DoctorUser = db.UserT.Include(x => x.WorkAddress).First(a => a.Login == login);
             var Doctor = db.DoctorT.Where(x => x.UserId == DoctorUser.UserId).First();
 
+            //změny jména, příjmení, titulu, telefonu, mailu, ICZ a prac. telefonu
             DoctorUser.Name = edit_name;
             DoctorUser.Surname = edit_surname;
             DoctorUser.Title = edit_title;
             DoctorUser.Phone = edit_tel;
             DoctorUser.Email = edit_mail;
-
             Doctor.ICZ = edit_ICZ;
             Doctor.WorkPhone = edit_tel;
 
-
+            //pokud doktor ještě nemá adresu, vytvoříme ji
             if (DoctorUser.WorkAddress == null)
             {
                 DoctorUser.WorkAddress = new Address { };
                 db.SaveChanges();
             }
 
-
+            //změna adresy
             DoctorUser.WorkAddress.StreetName = edit_street;
             DoctorUser.WorkAddress.HouseNumber = edit_cp;
             DoctorUser.WorkAddress.City = edit_town;
             DoctorUser.WorkAddress.ZIP = edit_psc;
             db.SaveChanges();
 
+            //změna hesla
             /****************************/
-
             if (!String.IsNullOrEmpty(edit_password))
             {
                 var userChangeLogin = await _userManager.FindByNameAsync(DoctorUser.Login);
@@ -1022,13 +1040,15 @@ namespace Nemocnice.Controllers
                 await _userManager.ResetPasswordAsync(userChangeLogin, token, edit_password);
                 await _userManager.UpdateAsync(userChangeLogin);
             }
-
             /****************************/
 
 
             return RedirectToAction("DoctorEdit", new { SortOrder = Request.Form["SortOrder"], p = Request.Form["p"], Search = Request.Form["Search"] });
         }
 
+        /*
+         * funkce pro testování, zda dané rodné číslo je unikátní a nebylo již použito  
+        */
         public JsonResult TestSocialSecurityNumUnique(string num)
         {
             bool result = true;
